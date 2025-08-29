@@ -83,6 +83,17 @@
             align-items: center;
             flex-shrink: 0; /* Prevent shrinking */
         }
+        .banner-ad {
+            width: 100%;
+            height: 50px;
+            background-color: #333;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 14px;
+            border-radius: 10px;
+        }
     </style>
 </head>
 <body class="bg-[#141414]">
@@ -139,7 +150,8 @@
                     <div class="shrink-0"><label class="relative flex h-[31px] w-[51px] cursor-pointer items-center rounded-full border-none bg-[#303030] p-0.5 has-[:checked]:justify-end has-[:checked]:bg-[#8c8c8c]"><div class="h-full w-[27px] rounded-full bg-white" style="box-shadow: rgba(0, 0, 0, 0.15) 0px 3px 8px, rgba(0, 0, 0, 0.06) 0px 3px 1px;"></div><input id="shuffle-toggle" type="checkbox" class="invisible absolute" /></label></div>
                 </div>
                 <h3 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] px-4 pb-2 pt-4">About</h3>
-                <div class="flex items-center gap-4 bg-[#141414] px-4 min-h-14 justify-between"><p class="text-white text-base font-normal leading-normal flex-1 truncate">App version</p><div class="shrink-0"><p class="text-white text-base font-normal leading-normal">1.0.4</p></div></div>
+                <div class="flex items-center gap-4 bg-[#141414] px-4 min-h-14 justify-between" style="margin-bottom: 60px;"><p class="text-white text-base font-normal leading-normal flex-1 truncate">App version</p><div class="shrink-0"><p class="text-white text-base font-normal leading-normal">1.0.4</p></div></div>
+                <div id="settings-banner-ad" class="banner-ad" style="position: absolute; bottom: 10px; left: 10px; right: 10px; width: auto;">Simulated Banner Ad</div>
             </div>
         </div>
 
@@ -169,6 +181,7 @@
         <div class="time-stamps"><span id="current-time">0:00</span><span id="duration">0:00</span></div>
         <div class="controls"><button class="control-btn" id="prev-btn"><i class="fas fa-backward-step"></i></button><button class="control-btn play-pause-btn" id="play-pause-btn"><i class="fas fa-play"></i></button><button class="control-btn" id="next-btn"><i class="fas fa-forward-step"></i></button></div>
         <div class="volume-container"><i class="fas fa-volume-down"></i><input type="range" min="0" max="1" step="0.01" value="1" class="volume-slider" id="volume-slider"><i class="fas fa-volume-up"></i></div>
+        <div id="player-banner-ad" class="banner-ad" style="margin-top: 20px;">Simulated Banner Ad</div>
     </div>
 
     <!-- Modals -->
@@ -180,6 +193,16 @@
             <div class="flex justify-end gap-2">
                 <button id="deny-permission-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg">Deny</button>
                 <button id="allow-permission-btn" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg">Allow</button>
+            </div>
+        </div>
+    </div>
+    <div id="interstitial-ad-overlay" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 320px; text-align: center;">
+            <button id="interstitial-ad-close" class="modal-close" style="top: 5px; right: 10px;">&times;</button>
+            <h3 style="font-size: 20px; font-weight: bold; margin-bottom: 10px;">Simulated Interstitial Ad</h3>
+            <p style="margin-bottom: 20px;">This is a full-screen ad simulation. Click the close button to continue.</p>
+            <div style="background: #e9ecef; height: 200px; display:flex; align-items:center; justify-content:center; border-radius: 10px;">
+                <p style="color: #333;">[ Ad Content Placeholder ]</p>
             </div>
         </div>
     </div>
@@ -211,6 +234,8 @@
         const adPlaceholder = document.getElementById('ad-placeholder');
         const playerBackBtn = document.getElementById('player-back-btn');
         const closeAdBtn = document.getElementById('close-ad-btn');
+        const interstitialAdOverlay = document.getElementById('interstitial-ad-overlay');
+        const interstitialAdClose = document.getElementById('interstitial-ad-close');
 
         // --- App State ---
         let recentlyAdded = [ { id: 100, name: 'New Indie Tracks', art: 'https://placehold.co/240x240/fec89a/ffffff?text=New+Indie', tracks: [ { title: 'Summer Breeze', artist: 'Chillwave Artist', audio: 'https://cdn.pixabay.com/download/audio/2022/08/03/audio_516a869055.mp3', art: 'https://placehold.co/220x220/fec89a/ffffff?text=Summer' }] } ];
@@ -220,6 +245,10 @@
         let currentPlaylist = [], trackIndex = 0, isPlaying = false, sound = null, animationFrameId = null, originalPlaylist = [];
         let viewHistory = ['home-view'];
         const playerSettings = { shuffle: false };
+        let listeningTimeInSeconds = 0;
+        let playlistSwitchCount = 0;
+        let interstitialAdsShown = 0;
+        let listeningTimer = null;
 
         // --- Gemini API Integration ---
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=`;
@@ -281,6 +310,11 @@
             appContainer.classList.remove('hidden');
             document.body.classList.remove('player-view-active');
             document.body.classList.add('bg-[#141414]');
+            if (listeningTimer) clearInterval(listeningTimer);
+            if (listeningTimeInSeconds >= 300) {
+                showInterstitialAd();
+                listeningTimeInSeconds = 0;
+            }
             if (sound && isPlaying) {
                 sound.pause();
             }
@@ -302,6 +336,18 @@
         // --- AdMob Simulation ---
         function showAd() {
             adPlaceholder.classList.remove('hidden');
+        }
+
+        function showInterstitialAd() {
+            if (interstitialAdsShown >= 2) {
+                console.log("Interstitial ad frequency cap reached for this session.");
+                return;
+            }
+            interstitialAdOverlay.classList.remove('hidden');
+            interstitialAdsShown++;
+            if (sound && isPlaying) {
+                sound.pause();
+            }
         }
 
         // --- Library & Playlist Rendering ---
@@ -333,7 +379,12 @@
 
             librarySongs.innerHTML = '';
             const allTracks = allPlaylists.flatMap(p => p.tracks);
-            allTracks.forEach(track => librarySongs.appendChild(createClickableItem(`${track.title} - ${track.artist}`, () => playSongFromLibrary(track, allTracks))));
+            allTracks.forEach((track, index) => {
+                librarySongs.appendChild(createClickableItem(`${track.title} - ${track.artist}`, () => playSongFromLibrary(track, allTracks)));
+                if ((index + 1) % 8 === 0 && (index + 1) < allTracks.length) {
+                    librarySongs.appendChild(createNativeAdCard());
+                }
+            });
         }
 
         function createClickableItem(text, onClick) {
@@ -342,6 +393,22 @@
             item.textContent = text;
             item.addEventListener('click', onClick);
             return item;
+        }
+
+        function createNativeAdCard() {
+            const adCard = document.createElement('div');
+            adCard.className = 'text-white bg-[#303030] p-3 rounded-lg';
+            adCard.innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <div style="font-size: 10px; color: #aaa;">Ad</div>
+                        <div style="font-weight: bold;">Simulated Native Ad</div>
+                        <div style="font-size: 12px; color: #ccc;">Sponsored Content</div>
+                    </div>
+                    <button style="background-color: #555; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">Install</button>
+                </div>
+            `;
+            return adCard;
         }
 
         function handleSearch() {
@@ -389,6 +456,10 @@
 
         // --- Playback ---
         function playPlaylist(playlistId) {
+            playlistSwitchCount++;
+            if (playlistSwitchCount % 3 === 0) {
+                showInterstitialAd();
+            }
             const allPlaylists = [...recentlyAdded, ...myPlaylists, ...generatedPlaylists];
             const playlistData = allPlaylists.find(p => p.id === playlistId);
             if (playlistData && playlistData.tracks && playlistData.tracks.length > 0) {
@@ -407,6 +478,10 @@
         }
 
         function playArtist(artistName) {
+            playlistSwitchCount++;
+            if (playlistSwitchCount % 3 === 0) {
+                showInterstitialAd();
+            }
             const allPlaylists = [...recentlyAdded, ...myPlaylists, ...generatedPlaylists];
             const artistTracks = allPlaylists.flatMap(p => p.tracks).filter(t => t.artist === artistName);
             if (artistTracks && artistTracks.length > 0) {
@@ -515,12 +590,17 @@
                     isPlaying = true;
                     playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
                     playerContainer.classList.add('playing');
+                    if (listeningTimer) clearInterval(listeningTimer);
+                    listeningTimer = setInterval(() => {
+                        listeningTimeInSeconds++;
+                    }, 1000);
                     requestAnimationFrame(updateProgress);
                 },
                 onpause: () => {
                     isPlaying = false;
                     playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
                     playerContainer.classList.remove('playing');
+                    if (listeningTimer) clearInterval(listeningTimer);
                     cancelAnimationFrame(animationFrameId);
                 },
                 onend: () => {
@@ -563,6 +643,7 @@
         denyPermissionBtn.addEventListener('click', () => permissionModalOverlay.classList.add('hidden'));
         playerBackBtn.addEventListener('click', hidePlayerView);
         closeAdBtn.addEventListener('click', () => adPlaceholder.classList.add('hidden'));
+        interstitialAdClose.addEventListener('click', () => interstitialAdOverlay.classList.add('hidden'));
 
         // --- Initialization ---
         window.onload = () => {
