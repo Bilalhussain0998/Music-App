@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Player</title>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?display=swap&family=Noto+Sans:wght@400;500;700;900&family=Spline+Sans:wght@400;500;700" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <style>
+        /* Base Styles */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* Prevent body scrolling */
+        }
+        body.player-view-active {
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-h: 100vh;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+
+        .hidden { display: none !important; }
+
+        /* Player Styles */
+        .player-container {
+            width: 100%; max-width: 380px; background-color: #ffffff;
+            border-radius: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 30px; text-align: center; position: relative;
+        }
+        .album-art {
+            width: 220px; height: 220px; border-radius: 20px;
+            margin: 0 auto 25px; background-size: cover; background-position: center;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            transition: transform 0.3s ease;
+        }
+        .player-container.playing .album-art { transform: scale(1.05); }
+        .track-info h2 { font-size: 24px; font-weight: 700; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .track-info p { font-size: 16px; color: #666; margin-bottom: 25px; }
+        .progress-container { width: 100%; background-color: #e9ecef; border-radius: 5px; height: 6px; cursor: pointer; margin-bottom: 10px; }
+        .progress { background-color: #a2d2ff; width: 0%; height: 100%; border-radius: 5px; transition: width 0.1s linear; }
+        .time-stamps { display: flex; justify-content: space-between; font-size: 12px; color: #999; margin-bottom: 20px; }
+        .controls { display: flex; justify-content: center; align-items: center; gap: 25px; margin-bottom: 25px; }
+        .control-btn { background: none; border: none; font-size: 20px; cursor: pointer; color: #555; transition: color 0.3s ease, transform 0.2s ease; }
+        .control-btn:hover { color: #a2d2ff; }
+        .control-btn:active { transform: scale(0.95); }
+        .play-pause-btn { font-size: 45px; color: #a2d2ff; background-color: #f0f2f5; width: 70px; height: 70px; border-radius: 50%; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .volume-container { display: flex; justify-content: center; align-items: center; gap: 10px; color: #888; }
+        .volume-slider { -webkit-appearance: none; appearance: none; width: 120px; height: 5px; background: #e9ecef; outline: none; border-radius: 3px; transition: opacity 0.2s; }
+        .volume-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 15px; height: 15px; background: #a2d2ff; cursor: pointer; border-radius: 50%; }
+
+        /* Modal & Feature Styles */
+        #info-btn { position: absolute; top: 20px; right: 20px; font-size: 18px; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); z-index: 100; display: flex; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 15px; max-width: 90%; width: 500px; text-align: left; position: relative; }
+        .modal-close { position: absolute; top: 10px; right: 15px; background: none; border: none; font-size: 24px; cursor: pointer; color: #888; }
+        .modal-body .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #a2d2ff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* Page Transition Animations */
+        .view { position: absolute; top: 0; left: 0; right: 0; bottom: 0; transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out; }
+        .view-enter { transform: translateX(100%); opacity: 0; }
+        .view-exit { transform: translateX(-100%); opacity: 0; }
+        .view-active { transform: translateX(0); opacity: 1; }
+
+        /* AdMob Placeholder Styles */
+        #ad-placeholder {
+            height: 60px;
+            background-color: #222;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0; /* Prevent shrinking */
+        }
+    </style>
+</head>
+<body class="bg-[#141414]">
+
+    <!-- App Container -->
+    <div id="app-container" class="relative flex size-full min-h-screen flex-col bg-[#141414] dark group/design-root" style='font-family: "Spline Sans", "Noto Sans", sans-serif;'>
+        <div id="main-content" class="flex-grow overflow-y-auto relative">
+            <!-- Home Page View -->
+            <div id="home-view" class="view view-active">
+                <div class="flex items-center bg-[#141414] p-4 pb-2 justify-between"><h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center pl-12 pr-12">My Music</h2></div>
+                <h2 class="text-white text-[22px] font-bold leading-tight tracking-[-0.015em] px-4 pb-3 pt-5">Recently Added</h2>
+                <div class="flex overflow-x-auto [-ms-scrollbar-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"><div id="recently-added-container" class="flex items-stretch p-4 gap-3"></div></div>
+                <h2 class="text-white text-[22px] font-bold leading-tight tracking-[-0.015em] px-4 pb-3 pt-5">My Playlists</h2>
+                <div class="flex overflow-x-auto [-ms-scrollbar-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"><div id="my-playlists-container" class="flex items-stretch p-4 gap-3"></div></div>
+                <h2 class="text-white text-[22px] font-bold leading-tight tracking-[-0.015em] px-4 pb-3 pt-5">Generated Playlists</h2>
+                <div class="flex overflow-x-auto [-ms-scrollbar-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"><div id="generated-playlists-container" class="flex items-stretch p-4 gap-3"></div></div>
+            </div>
+
+            <!-- Search Page View -->
+            <div id="search-view" class="view hidden">
+                <div class="flex items-center bg-[#141414] p-4 pb-2 justify-between"><h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1">Search</h2></div>
+                <div class="px-4 py-3"><label class="flex flex-col min-w-40 h-12 w-full"><div class="flex w-full flex-1 items-stretch rounded-lg h-full"><div class="text-[#ababab] flex border-none bg-[#303030] items-center justify-center pl-4 rounded-l-lg border-r-0"><svg xmlns="http://www.w3.org/2000/svg" width="24px" height="24px" fill="currentColor" viewBox="0 0 256 256"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"></path></svg></div><input id="search-input" placeholder="Search your downloaded music" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-white focus:outline-0 focus:ring-0 border-none bg-[#303030] focus:border-none h-full placeholder:text-[#ababab] px-4 rounded-l-none border-l-0 pl-2 text-base font-normal leading-normal" value=""/></div></label></div>
+                <div id="search-default-content">
+                    <div class="px-4 pt-4"><h3 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] pb-3">✨ Create with AI</h3><div class="flex gap-2"><input id="ai-prompt-input" placeholder="e.g., a rainy day study session" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-white focus:outline-0 focus:ring-0 border-none bg-[#303030] focus:border-none h-12 placeholder:text-[#ababab] px-4 text-base font-normal leading-normal"/><button id="generate-playlist-btn" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg h-12">Generate</button></div></div>
+                    <h3 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] px-4 pb-2 pt-6">Browse all</h3>
+                    <div class="grid grid-cols-[repeat(auto-fit,minmax(158px,1fr))] gap-3 p-4"><div class="bg-cover bg-center flex flex-col gap-3 rounded-lg justify-end p-4 aspect-video" style='background-image: linear-gradient(0deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0) 100%), url("https://placehold.co/158x88/e63946/ffffff?text=Charts");'><p class="text-white text-base font-bold leading-tight w-4/5 line-clamp-2">Top Charts</p></div><div class="bg-cover bg-center flex flex-col gap-3 rounded-lg justify-end p-4 aspect-video" style='background-image: linear-gradient(0deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0) 100%), url("https://placehold.co/158x88/f4a261/ffffff?text=Podcasts");'><p class="text-white text-base font-bold leading-tight w-4/5 line-clamp-2">Podcasts</p></div></div>
+                </div>
+                <div id="search-results-container" class="p-4 space-y-4 hidden"></div>
+            </div>
+            
+            <!-- Library Page View -->
+            <div id="library-view" class="view hidden">
+                <div class="flex items-center bg-[#141414] p-4 pb-2 justify-between">
+                    <div id="library-back-btn" class="text-white flex size-12 shrink-0 items-center cursor-pointer -ml-4"><svg xmlns="http://www.w3.org/2000/svg" width="24px" height="24px" fill="currentColor" viewBox="0 0 256 256"><path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"></path></svg></div>
+                    <h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center pr-12">Library</h2>
+                </div>
+                <div class="p-4 space-y-6">
+                    <button id="scan-device-btn" class="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2"><i class="fas fa-search"></i>Scan Device for Music</button>
+                    <div><h3 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] pb-2">Playlists</h3><div id="library-playlists" class="space-y-2"></div></div>
+                    <div><h3 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] pb-2">Artists</h3><div id="library-artists" class="space-y-2"></div></div>
+                    <div><h3 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] pb-2">Songs</h3><div id="library-songs" class="space-y-2"></div></div>
+                </div>
+            </div>
+
+            <!-- Settings Page View -->
+            <div id="settings-view" class="view hidden">
+                <div class="flex items-center bg-[#141414] p-4 pb-2 justify-between">
+                    <div id="settings-back-btn" class="text-white flex size-12 shrink-0 items-center cursor-pointer"><svg xmlns="http://www.w3.org/2000/svg" width="24px" height="24px" fill="currentColor" viewBox="0 0 256 256"><path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"></path></svg></div>
+                    <h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center pr-12">Settings</h2>
+                </div>
+                <h3 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] px-4 pb-2 pt-4">Playback</h3>
+                <div class="flex items-center gap-4 bg-[#141414] px-4 min-h-[72px] py-2 justify-between">
+                    <div class="flex flex-col justify-center"><p class="text-white text-base font-medium leading-normal line-clamp-1">Shuffle</p><p id="shuffle-status" class="text-[#ababab] text-sm font-normal leading-normal line-clamp-2">Off</p></div>
+                    <div class="shrink-0"><label class="relative flex h-[31px] w-[51px] cursor-pointer items-center rounded-full border-none bg-[#303030] p-0.5 has-[:checked]:justify-end has-[:checked]:bg-[#8c8c8c]"><div class="h-full w-[27px] rounded-full bg-white" style="box-shadow: rgba(0, 0, 0, 0.15) 0px 3px 8px, rgba(0, 0, 0, 0.06) 0px 3px 1px;"></div><input id="shuffle-toggle" type="checkbox" class="invisible absolute" /></label></div>
+                </div>
+                <h3 class="text-white text-lg font-bold leading-tight tracking-[-0.015em] px-4 pb-2 pt-4">About</h3>
+                <div class="flex items-center gap-4 bg-[#141414] px-4 min-h-14 justify-between"><p class="text-white text-base font-normal leading-normal flex-1 truncate">App version</p><div class="shrink-0"><p class="text-white text-base font-normal leading-normal">1.0.4</p></div></div>
+            </div>
+        </div>
+        
+        <!-- Navigation Bar -->
+        <div id="nav-bar" class="flex-shrink-0">
+            <div class="flex gap-2 border-t border-[#303030] bg-[#212121] px-4 pb-3 pt-2">
+                <a id="nav-home" class="nav-item just flex flex-1 flex-col items-center justify-end gap-1 rounded-full" href="#"><div class="flex h-8 items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="24px" height="24px" fill="currentColor" viewBox="0 0 256 256"><path d="M224,115.55V208a16,16,0,0,1-16,16H168a16,16,0,0,1-16-16V168a8,8,0,0,0-8-8H112a8,8,0,0,0-8,8v40a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V115.55a16,16,0,0,1,5.17-11.78l80-75.48.11-.11a16,16,0,0,1,21.53,0,1.14,1.14,0,0,0,.11.11l80,75.48A16,16,0,0,1,224,115.55Z"></path></svg></div><p class="text-xs font-medium leading-normal tracking-[0.015em]">Home</p></a>
+                <a id="nav-search" class="nav-item just flex flex-1 flex-col items-center justify-end gap-1 rounded-full" href="#"><div class="flex h-8 items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="24px" height="24px" fill="currentColor" viewBox="0 0 256 256"><path d="M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"></path></svg></div><p class="text-xs font-medium leading-normal tracking-[0.015em]">Search</p></a>
+                <a id="nav-library" class="nav-item just flex flex-1 flex-col items-center justify-end gap-1 rounded-full" href="#"><div class="flex h-8 items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="24px" height="24px" fill="currentColor" viewBox="0 0 256 256"><path d="M184,32H72A16,16,0,0,0,56,48V224a8,8,0,0,0,12.24,6.78L128,193.43l59.77,37.35A8,8,0,0,0,200,224V48A16,16,0,0,0,184,32Zm0,16V161.57l-51.77-32.35a8,8,0,0,0-8.48,0L72,161.56V48ZM132.23,177.22a8,8,0,0,0-8.48,0L72,209.57V180.43l56-35,56,35v29.14Z"></path></svg></div><p class="text-xs font-medium leading-normal tracking-[0.015em]">Library</p></a>
+                <a id="nav-settings" class="nav-item just flex flex-1 flex-col items-center justify-end gap-1 rounded-full" href="#"><div class="flex h-8 items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="24px" height="24px" fill="currentColor" viewBox="0 0 256 256"><path d="M216,130.16q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.6,107.6,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.29,107.29,0,0,0-26.25-10.86,8,8,0,0,0-7.06,1.48L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.6,107.6,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z"></path></svg></div><p class="text-xs font-medium leading-normal tracking-[0.015em]">Settings</p></a>
+            </div>
+        </div>
+        <!-- AdMob Placeholder -->
+        <div id="ad-placeholder" class="hidden">Sample Ad - AdMob ads will show here</div>
+    </div>
+
+    <!-- Player View -->
+    <div class="player-container hidden" id="player-container">
+        <button class="control-btn" id="info-btn"><i class="fas fa-info-circle"></i></button>
+        <div class="album-art" id="album-art"></div>
+        <div class="track-info"><h2 id="track-title"></h2><p id="track-artist"></p></div>
+        <div class="progress-container" id="progress-container"><div class="progress" id="progress"></div></div>
+        <div class="time-stamps"><span id="current-time">0:00</span><span id="duration">0:00</span></div>
+        <div class="controls"><button class="control-btn" id="prev-btn"><i class="fas fa-backward-step"></i></button><button class="control-btn play-pause-btn" id="play-pause-btn"><i class="fas fa-play"></i></button><button class="control-btn" id="next-btn"><i class="fas fa-forward-step"></i></button></div>
+        <div class="volume-container"><i class="fas fa-volume-down"></i><input type="range" min="0" max="1" step="0.01" value="1" class="volume-slider" id="volume-slider"><i class="fas fa-volume-up"></i></div>
+    </div>
+
+    <!-- Modals -->
+    <div id="info-modal-overlay" class="modal-overlay hidden"><div class="modal-content"><button id="info-modal-close" class="modal-close"><i class="fas fa-times"></i></button><div id="info-modal-body" class="modal-body"></div></div></div>
+    <div id="permission-modal-overlay" class="modal-overlay hidden">
+        <div class="modal-content text-gray-800">
+            <h3 class="text-lg font-bold mb-2">Storage Permission</h3>
+            <p class="mb-4">"My Music" app needs permission to access audio files on your device. This allows you to listen to your local songs.</p>
+            <div class="flex justify-end gap-2">
+                <button id="deny-permission-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg">Deny</button>
+                <button id="allow-permission-btn" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg">Allow</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.4/howler.min.js"></script>
+    <script>
+        // --- DOM Elements ---
+        const appContainer = document.getElementById('app-container');
+        const mainContent = document.getElementById('main-content');
+        const homeView = document.getElementById('home-view'), searchView = document.getElementById('search-view'), settingsView = document.getElementById('settings-view'), libraryView = document.getElementById('library-view');
+        const playerContainer = document.getElementById('player-container');
+        const recentlyAddedContainer = document.getElementById('recently-added-container'), myPlaylistsContainer = document.getElementById('my-playlists-container'), generatedPlaylistsContainer = document.getElementById('generated-playlists-container');
+        const searchInput = document.getElementById('search-input');
+        const navBar = document.getElementById('nav-bar');
+        const navHome = document.getElementById('nav-home'), navSearch = document.getElementById('nav-search'), navSettings = document.getElementById('nav-settings'), navLibrary = document.getElementById('nav-library');
+        const trackTitle = document.getElementById('track-title'), trackArtist = document.getElementById('track-artist');
+        const albumArt = document.getElementById('album-art'), progress = document.getElementById('progress'), progressContainer = document.getElementById('progress-container');
+        const currentTimeEl = document.getElementById('current-time'), durationEl = document.getElementById('duration');
+        const playPauseBtn = document.getElementById('play-pause-btn'), prevBtn = document.getElementById('prev-btn'), nextBtn = document.getElementById('next-btn');
+        const volumeSlider = document.getElementById('volume-slider');
+        const aiPromptInput = document.getElementById('ai-prompt-input'), generatePlaylistBtn = document.getElementById('generate-playlist-btn');
+        const infoBtn = document.getElementById('info-btn'), infoModalOverlay = document.getElementById('info-modal-overlay'), infoModalClose = document.getElementById('info-modal-close'), infoModalBody = document.getElementById('info-modal-body');
+        const settingsBackBtn = document.getElementById('settings-back-btn'), shuffleToggle = document.getElementById('shuffle-toggle'), shuffleStatus = document.getElementById('shuffle-status');
+        const libraryBackBtn = document.getElementById('library-back-btn');
+        const libraryPlaylists = document.getElementById('library-playlists'), libraryArtists = document.getElementById('library-artists'), librarySongs = document.getElementById('library-songs');
+        const scanDeviceBtn = document.getElementById('scan-device-btn');
+        const permissionModalOverlay = document.getElementById('permission-modal-overlay'), allowPermissionBtn = document.getElementById('allow-permission-btn'), denyPermissionBtn = document.getElementById('deny-permission-btn');
+        const adPlaceholder = document.getElementById('ad-placeholder');
+        
+        // --- App State ---
+        let recentlyAdded = [ { id: 100, name: 'New Indie Tracks', art: 'https://placehold.co/240x240/fec89a/ffffff?text=New+Indie', tracks: [ { title: 'Summer Breeze', artist: 'Chillwave Artist', audio: 'https://cdn.pixabay.com/download/audio/2022/08/03/audio_516a869055.mp3', art: 'https://placehold.co/220x220/fec89a/ffffff?text=Summer' }] } ];
+        let myPlaylists = [ { id: 1, name: 'Indie Gems', art: 'https://placehold.co/240x240/001219/ffffff?text=Gems', tracks: [ { title: 'Midnight City', artist: 'Synthwave Producer', audio: 'https://cdn.pixabay.com/download/audio/2022/02/07/audio_c68a14512e.mp3', art: 'https://placehold.co/220x220/001219/ffffff?text=Midnight' }] } ];
+        let generatedPlaylists = [ { id: 2, name: 'AI Mix', art: 'https://placehold.co/240x240/8338ec/ffffff?text=AI', tracks: [ { title: 'Forest Lullaby', artist: 'Ambient Composer', audio: 'https://cdn.pixabay.com/download/audio/2022/11/22/audio_2c4a8996c9.mp3', art: 'https://placehold.co/220x220/005f73/ffffff?text=Forest' }] } ];
+        
+        let currentPlaylist = [], trackIndex = 0, isPlaying = false, sound = null, animationFrameId = null;
+        let viewHistory = ['home-view'];
+        const playerSettings = { shuffle: false };
+
+        // --- Gemini API Integration ---
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=`;
+        async function callGemini(prompt, isJson = false) { /* ... implementation ... */ }
+        async function generatePlaylist() { /* ... implementation ... */ }
+        async function getSongInfo() { /* ... implementation ... */ }
+
+        // --- View Management & Navigation ---
+        function showView(viewId, isGoingBack = false) {
+            const currentView = document.querySelector('.view-active');
+            const nextView = document.getElementById(viewId);
+
+            if (currentView && nextView && currentView.id !== viewId) {
+                currentView.classList.add('view-exit');
+                currentView.classList.remove('view-active');
+
+                nextView.classList.remove('hidden', 'view-exit');
+                nextView.classList.add('view-enter');
+                
+                setTimeout(() => {
+                    nextView.classList.remove('view-enter');
+                    nextView.classList.add('view-active');
+                    currentView.classList.add('hidden');
+                }, 300); // Match animation duration
+            } else if (nextView) {
+                document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+                nextView.classList.remove('hidden');
+                nextView.classList.add('view-active');
+            }
+
+            if (!isGoingBack && viewHistory[viewHistory.length - 1] !== viewId) {
+                viewHistory.push(viewId);
+            }
+            
+            if (viewId === 'library-view') renderLibrary();
+            updateNav(viewId);
+        }
+
+        function goBack() {
+            if (viewHistory.length > 1) {
+                viewHistory.pop();
+                showView(viewHistory[viewHistory.length - 1], true);
+            }
+        }
+
+        function showPlayerView() {
+            appContainer.classList.add('hidden');
+            playerContainer.classList.remove('hidden');
+            document.body.classList.add('player-view-active');
+            document.body.classList.remove('bg-[#141414]');
+        }
+
+        function updateNav(activeView) {
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.replace('text-white', 'text-[#ababab]');
+                item.querySelector('div').classList.replace('text-white', 'text-[#ababab]');
+            });
+            const navId = activeView.split('-')[0];
+            const activeNav = document.getElementById(`nav-${navId}`);
+            if (activeNav) {
+                activeNav.classList.replace('text-[#ababab]', 'text-white');
+                activeNav.querySelector('div').classList.replace('text-[#ababab]', 'text-white');
+            }
+        }
+        
+        // --- AdMob Simulation ---
+        function showAd() {
+            adPlaceholder.classList.remove('hidden');
+            mainContent.style.paddingBottom = (navBar.offsetHeight + adPlaceholder.offsetHeight) + 'px';
+        }
+
+        // --- Library & Playlist Rendering ---
+        function renderHomePage() {
+            renderPlaylistRow(recentlyAdded, recentlyAddedContainer);
+            renderPlaylistRow(myPlaylists, myPlaylistsContainer);
+            renderPlaylistRow(generatedPlaylists, generatedPlaylistsContainer);
+        }
+
+        function renderPlaylistRow(playlistArray, container) {
+            container.innerHTML = '';
+            playlistArray.forEach(playlist => {
+                const card = document.createElement('div');
+                card.className = "flex h-full flex-1 flex-col gap-4 rounded-lg min-w-60 cursor-pointer";
+                card.innerHTML = `<div class="w-full bg-center bg-no-repeat aspect-square bg-cover rounded-lg flex flex-col" style='background-image: url("${playlist.art}");'></div><p class="text-white text-base font-medium leading-normal">${playlist.name}</p>`;
+                card.addEventListener('click', () => playPlaylist(playlist.id));
+                container.appendChild(card);
+            });
+        }
+
+        function renderLibrary() {
+            const allPlaylists = [...recentlyAdded, ...myPlaylists, ...generatedPlaylists];
+            libraryPlaylists.innerHTML = '';
+            allPlaylists.forEach(p => libraryPlaylists.appendChild(createClickableItem(p.name, () => playPlaylist(p.id))));
+
+            libraryArtists.innerHTML = '';
+            const artists = [...new Set(allPlaylists.flatMap(p => p.tracks.map(t => t.artist)))];
+            artists.sort().forEach(artist => libraryArtists.appendChild(createClickableItem(artist, () => playArtist(artist))));
+
+            librarySongs.innerHTML = '';
+            const allTracks = allPlaylists.flatMap(p => p.tracks);
+            allTracks.forEach(track => librarySongs.appendChild(createClickableItem(`${track.title} - ${track.artist}`, () => playSongFromLibrary(track, allTracks))));
+        }
+        
+        function createClickableItem(text, onClick) {
+            const item = document.createElement('div');
+            item.className = 'text-white bg-[#303030] p-3 rounded-lg cursor-pointer hover:bg-[#404040]';
+            item.textContent = text;
+            item.addEventListener('click', onClick);
+            return item;
+        }
+
+        function handleSearch() {
+            const searchTerm = searchInput.value.toLowerCase().trim();
+            const resultsContainer = document.getElementById('search-results-container');
+            const defaultContent = document.getElementById('search-default-content');
+            
+            if (!searchTerm) {
+                resultsContainer.classList.add('hidden');
+                defaultContent.classList.remove('hidden');
+                resultsContainer.innerHTML = '';
+                return;
+            }
+
+            resultsContainer.classList.remove('hidden');
+            defaultContent.classList.add('hidden');
+            resultsContainer.innerHTML = ''; // Clear previous results
+
+            const allPlaylists = [...recentlyAdded, ...myPlaylists, ...generatedPlaylists];
+            const allTracks = allPlaylists.flatMap(p => p.tracks);
+            const allArtists = [...new Set(allTracks.map(t => t.artist))];
+
+            const matchingPlaylists = allPlaylists.filter(p => p.name.toLowerCase().includes(searchTerm));
+            const matchingArtists = allArtists.filter(a => a.toLowerCase().includes(searchTerm));
+            const matchingTracks = allTracks.filter(t => t.title.toLowerCase().includes(searchTerm));
+
+            if (matchingPlaylists.length === 0 && matchingArtists.length === 0 && matchingTracks.length === 0) {
+                resultsContainer.innerHTML = '<p class="text-gray-400 text-center">No results found.</p>';
+                return;
+            }
+
+            if (matchingPlaylists.length > 0) {
+                resultsContainer.innerHTML += '<h3 class="text-white text-lg font-bold">Playlists</h3>';
+                matchingPlaylists.forEach(p => resultsContainer.appendChild(createClickableItem(p.name, () => playPlaylist(p.id))));
+            }
+            if (matchingArtists.length > 0) {
+                resultsContainer.innerHTML += '<h3 class="text-white text-lg font-bold mt-4">Artists</h3>';
+                matchingArtists.forEach(a => resultsContainer.appendChild(createClickableItem(a, () => playArtist(a))));
+            }
+            if (matchingTracks.length > 0) {
+                resultsContainer.innerHTML += '<h3 class="text-white text-lg font-bold mt-4">Songs</h3>';
+                matchingTracks.forEach(t => resultsContainer.appendChild(createClickableItem(`${t.title} - ${t.artist}`, () => playSongFromLibrary(t, allTracks))));
+            }
+        }
+        
+        // --- Playback ---
+        function playPlaylist(playlistId) {
+            const allPlaylists = [...recentlyAdded, ...myPlaylists, ...generatedPlaylists];
+            const playlistData = allPlaylists.find(p => p.id === playlistId);
+            if (playlistData) {
+                currentPlaylist = playlistData.tracks;
+                trackIndex = 0;
+                loadTrack(trackIndex);
+                showPlayerView();
+                sound.play();
+            }
+        }
+
+        function playArtist(artistName) {
+            const allPlaylists = [...recentlyAdded, ...myPlaylists, ...generatedPlaylists];
+            const artistTracks = allPlaylists.flatMap(p => p.tracks).filter(t => t.artist === artistName);
+            if (artistTracks.length > 0) {
+                currentPlaylist = artistTracks;
+                trackIndex = 0;
+                loadTrack(trackIndex);
+                showPlayerView();
+                sound.play();
+            }
+        }
+
+        function playSongFromLibrary(trackToPlay, entireLibrary) {
+            currentPlaylist = entireLibrary;
+            trackIndex = entireLibrary.findIndex(t => t.title === trackToPlay.title && t.artist === trackToPlay.artist);
+            if (trackIndex !== -1) {
+                loadTrack(trackIndex);
+                showPlayerView();
+                sound.play();
+            }
+        }
+        
+        // --- Settings ---
+        function handleShuffleToggle() {
+            playerSettings.shuffle = shuffleToggle.checked;
+            shuffleStatus.textContent = playerSettings.shuffle ? 'On' : 'Off';
+        }
+
+        // --- Device File Simulation ---
+        function requestDevicePermissions() {
+            permissionModalOverlay.classList.remove('hidden');
+        }
+
+        function scanDeviceForAudio() {
+            permissionModalOverlay.classList.add('hidden');
+            localStorage.setItem('permissionGranted', 'true');
+            const localFiles = [
+                { title: 'My Recording 1', artist: 'Unknown Artist', audio: 'https://cdn.pixabay.com/download/audio/2022/01/21/audio_31743c53b9.mp3', art: 'https://placehold.co/220x220/ffbe0b/ffffff?text=Local' },
+                { title: 'Downloaded Beat', artist: 'Unknown Artist', audio: 'https://cdn.pixabay.com/download/audio/2022/08/03/audio_9318182f25.mp3', art: 'https://placehold.co/220x220/fb5607/ffffff?text=File' }
+            ];
+            const devicePlaylist = {
+                id: 999, // Unique ID for device playlist
+                name: 'On My Device',
+                art: 'https://placehold.co/240x240/3a86ff/ffffff?text=Device',
+                tracks: localFiles
+            };
+            if (!myPlaylists.some(p => p.id === 999)) {
+                myPlaylists.push(devicePlaylist);
+            }
+            renderHomePage();
+            renderLibrary();
+        }
+
+        // --- Core Player Functions ---
+        function nextTrack() {
+            if (playerSettings.shuffle) {
+                let newIndex;
+                if (currentPlaylist.length <= 1) newIndex = 0;
+                else { do { newIndex = Math.floor(Math.random() * currentPlaylist.length); } while (newIndex === trackIndex); }
+                trackIndex = newIndex;
+            } else {
+                trackIndex = (trackIndex + 1) % currentPlaylist.length;
+            }
+            loadTrack(trackIndex);
+            sound.play();
+        }
+        
+        function loadTrack(index) { if (sound) sound.unload(); const track = currentPlaylist[index]; sound = new Howl({ src: [track.audio], html5: true, volume: volumeSlider.value, onplay: () => { isPlaying = true; playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>'; playerContainer.classList.add('playing'); requestAnimationFrame(updateProgress); }, onpause: () => { isPlaying = false; playPauseBtn.innerHTML = '<i class="fas fa-play"></i>'; playerContainer.classList.remove('playing'); cancelAnimationFrame(animationFrameId); }, onend: () => nextTrack(), onload: () => { durationEl.textContent = formatTime(sound.duration()); } }); trackTitle.textContent = track.title; trackArtist.textContent = track.artist; albumArt.style.backgroundImage = `url('${track.art}')`; }
+        function playPauseTrack() { if (!sound) return; if (isPlaying) sound.pause(); else sound.play(); }
+        function prevTrack() { trackIndex = (trackIndex - 1 + currentPlaylist.length) % currentPlaylist.length; loadTrack(trackIndex); sound.play(); }
+        function updateProgress() { if (!sound || !isPlaying) return; const seek = sound.seek() || 0; currentTimeEl.textContent = formatTime(seek); progress.style.width = `${(seek / sound.duration()) * 100}%`; animationFrameId = requestAnimationFrame(updateProgress); }
+        function seekTrack(e) { if (!sound || !sound.duration()) return; const width = progressContainer.clientWidth; const clickX = e.offsetX; const duration = sound.duration(); sound.seek((clickX / width) * duration); }
+        function adjustVolume() { if (sound) sound.volume(volumeSlider.value); }
+        function formatTime(secs) { const minutes = Math.floor(secs / 60) || 0; const seconds = Math.floor(secs % 60) || 0; return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`; }
+
+        // --- Event Listeners ---
+        playPauseBtn.addEventListener('click', playPauseTrack); nextBtn.addEventListener('click', nextTrack); prevBtn.addEventListener('click', prevTrack);
+        volumeSlider.addEventListener('input', adjustVolume); progressContainer.addEventListener('click', seekTrack);
+        searchInput.addEventListener('input', handleSearch);
+        navHome.addEventListener('click', (e) => { e.preventDefault(); showView('home-view'); });
+        navSearch.addEventListener('click', (e) => { e.preventDefault(); showView('search-view'); });
+        navLibrary.addEventListener('click', (e) => { e.preventDefault(); showView('library-view'); });
+        navSettings.addEventListener('click', (e) => { e.preventDefault(); showView('settings-view'); });
+        settingsBackBtn.addEventListener('click', goBack);
+        libraryBackBtn.addEventListener('click', goBack);
+        shuffleToggle.addEventListener('change', handleShuffleToggle);
+        generatePlaylistBtn.addEventListener('click', generatePlaylist); infoBtn.addEventListener('click', getSongInfo);
+        infoModalClose.addEventListener('click', () => infoModalOverlay.classList.add('hidden')); infoModalOverlay.addEventListener('click', (e) => { if (e.target === infoModalOverlay) infoModalOverlay.classList.add('hidden'); });
+        scanDeviceBtn.addEventListener('click', requestDevicePermissions);
+        allowPermissionBtn.addEventListener('click', scanDeviceForAudio);
+        denyPermissionBtn.addEventListener('click', () => permissionModalOverlay.classList.add('hidden'));
+
+        // --- Initialization ---
+        window.onload = () => { 
+            renderHomePage();
+            showView('home-view', true); // Initial view, no animation
+            
+            // Simulate showing an ad after a delay
+            setTimeout(showAd, 5000);
+
+            // Request permission on first load
+            if (!localStorage.getItem('permissionGranted')) {
+                setTimeout(requestDevicePermissions, 1500);
+            } else {
+                scanDeviceForAudio(); // Scan if already permitted
+            }
+        };
+    </script>
+</body>
+</html>
